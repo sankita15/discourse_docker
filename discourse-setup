@@ -512,7 +512,9 @@ validate_config() {
 ## template file names
 ##
 
-if [ "$1" == "2container" ]
+tag_name="${1:-master}"
+
+if [ "$2" == "2container" ]
 then
     app_name=web_only
     data_name=data
@@ -595,10 +597,10 @@ sleep 5 # Just a chance to ^C in case they were too fast on the draw
 if [ "$data_name" == "$app_name" ]
 then
     echo Building $app_name
-    ./launcher rebuild $app_name
+    ./launcher rebuild $app_name $tag_name
 else
     echo Building $data_name now . . .
-    ./launcher rebuild $data_name
+    ./launcher rebuild $data_name $tag_name
     echo Building $app_name now . . .
-    ./launcher rebuild $app_name
+    ./launcher rebuild $app_name $tag_name
 fi

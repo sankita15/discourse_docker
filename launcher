@@ -25,6 +25,7 @@ usage () {
 
 command=$1
 config=$2
+git_tag_name=$3
 
 # user_args_argv is assigned once when the argument vector is parsed.
 user_args_argv=""
@@ -768,36 +769,9 @@ case "$command" in
       ;;
 
   rebuild)
-      if [ "$(git symbolic-ref --short HEAD)" == "master" ]; then
-        echo "Ensuring launcher is up to date"
-
-        git remote update
-
-        LOCAL=$(git rev-parse HEAD)
-        REMOTE=$(git rev-parse @{u})
-        BASE=$(git merge-base HEAD @{u})
-
-        if [ $LOCAL = $REMOTE ]; then
-          echo "Launcher is up-to-date"
-
-        elif [ $LOCAL = $BASE ]; then
-          echo "Updating Launcher"
-          git pull || (echo 'failed to update' && exit 1)
-
-          for (( i=${#BASH_ARGV[@]}-1,j=0; i>=0,j<${#BASH_ARGV[@]}; i--,j++ ))
-          do
-            args[$j]=${BASH_ARGV[$i]}
-          done
-          exec /bin/bash $0 "${args[@]}" # $@ is empty, because of shift at the beginning. Use BASH_ARGV instead.
-
-        elif [ $REMOTE = $BASE ]; then
-          echo "Your version of Launcher is ahead of origin"
-
-        else
-          echo "Launcher has diverged source, this is only expected in Dev mode"
-        fi
-
-      fi
+       git_tag_name=$3
+       git pull
+       git checkout "${git_tag_name}"
 
       set_existing_container
 
