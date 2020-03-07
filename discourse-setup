@@ -587,7 +587,7 @@ ask_user_for_config
 validate_config
 
 ##
-## if we reach this point without exiting, OK to proceed
+## #if we reach this point without exiting, OK to proceed
 ## rebuild won't fail if there's nothing to rebuild and does the restart
 ##
 echo "Updates successful. Rebuilding in 5 seconds."
