@@ -2,6 +2,8 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd $DIR
 
+. "./config.sh"
+
 ##
 ## Make sure only root can run our script
 ##
@@ -19,19 +21,7 @@ connect_to_port () {
   HOST="$1"
   PORT="$2"
   VERIFY=$(date +%s | sha256sum | base64 | head -c 20)
-  if ! [ -x "$(command -v nc)" ]; then
-    echo "In order to check the connection to $HOST:$PORT we need to open a socket using netcat."
-    echo However netcat is not installed on your system. You can continue without this check
-    echo or abort the setup, install netcat and try again.
-    while true; do
-      read -p "Would you like to continue without this check? [yn] " yn
-      case $yn in
-      [Yy]*) return 2 ;;
-      [Nn]*) exit ;;
-      *) echo "Please answer y or n." ;;
-      esac
-    done
-  else
+
     echo -e "HTTP/1.1 200 OK\n\n $VERIFY" | nc -w 4 -l -p $PORT >/dev/null 2>&1 &
     if curl --proto =http -s $HOST:$PORT --connect-timeout 3 | grep $VERIFY >/dev/null 2>&1; then
       return 0
@@ -39,7 +29,6 @@ connect_to_port () {
       curl --proto =http -s localhost:$PORT >/dev/null 2>&1
       return 1
     fi
-  fi
 }
 
 check_IP_match() {
@@ -71,9 +60,6 @@ check_IP_match() {
       echo If you want to proceed anyway, you will need to
       echo edit the containers/app.yml file manually.
       exit 1
-      ;;
-    2)
-      echo "Continuing without port check."
       ;;
   esac
 }
@@ -299,14 +285,12 @@ check_port() {
 ##
 read_config() {
   config_line=`egrep "^  #?$1:" $web_file`
-  read_config_result=`echo $config_line | awk  -F":" '{print $2}'`
-  read_config_result=`echo $read_config_result | sed "s/^\([\"']\)\(.*\)\1\$/\2/g"`
+  read_config_result=`echo $config_line | awk  -F":" '{print $2}' | sed "s/^\([\"']\)\(.*\)\1\$/\2/g"`
 }
 
 read_default() {
   config_line=`egrep "^  #?$1:" samples/standalone.yml`
-  read_default_result=`echo $config_line | awk  -F":" '{print $2}'`
-  read_default_result=`echo $read_config_result | sed "s/^\([\"']\)\(.*\)\1\$/\2/g"`
+  read_default_result=`echo $config_line | awk  -F":" '{print $2}' | sed "s/^\([\"']\)\(.*\)\1\$/\2/g"`
 }
 
 ##
@@ -317,138 +301,28 @@ ask_user_for_config() {
   # NOTE: Defaults now come from standalone.yml
 
   local changelog=/tmp/changelog.$PPID
-  read_config "DISCOURSE_SMTP_ADDRESS"
-  local smtp_address=$read_config_result
+  local smtp_address="${DISCOURSE_SMTP_ADDRESS}"
   # NOTE: if there are spaces between emails, this breaks, but a human should be paying attention
-  read_config "DISCOURSE_DEVELOPER_EMAILS"
-  local developer_emails=$read_config_result
-  read_config "DISCOURSE_SMTP_PASSWORD"
-  local smtp_password=$read_config_result
-  read_config "DISCOURSE_SMTP_PORT"
-  local smtp_port=$read_config_result
-  read_config "DISCOURSE_SMTP_USER_NAME"
-  local smtp_user_name=$read_config_result
-  if [ "$smtp_password" = "pa$$word" ]
-  then
-      smtp_password = ""
-  fi
-  read_config "LETSENCRYPT_ACCOUNT_EMAIL"
-  local letsencrypt_account_email=$read_config_result
+  local developer_emails=${DISCOURSE_DEVELOPER_EMAILS}
+  local smtp_password=${DISCOURSE_SMTP_PASSWORD}
+  local smtp_port=${DISCOURSE_SMTP_PORT}
+  local smtp_user_name=${DISCOURSE_SMTP_USER_NAME}
+  local letsencrypt_account_email=${LETSENCRYPT_ACCOUNT_EMAIL}
   if [ -z $letsencrypt_account_email ]
   then
       letsencrypt_account_email="me@example.com"
   fi
   if [ "$letsencrypt_account_email" = "me@example.com" ]
   then
-      local letsencrypt_status="ENTER to skip"
+      letsencrypt_status="ENTER to skip"
   else
-    local letsencrypt_status="Enter 'OFF' to disable."
+    letsencrypt_status="Enter 'OFF' to disable."
   fi
 
-  read_config "DISCOURSE_HOSTNAME"
-  hostname=$read_config_result
+  hostname=${DISCOURSE_HOSTNAME}
 
   local new_value=""
-  local config_ok="n"
   local update_ok="y"
-
-  echo ""
-
-  while [[ "$config_ok" == "n" ]]
-  do
-    if [ ! -z "$hostname" ]
-    then
-      read -p "Hostname for your Discourse? [$hostname]: " new_value
-      if [ ! -z "$new_value" ]
-      then
-          hostname="$new_value"
-      fi
-      if [[ $hostname =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]
-      then
-        echo
-        echo "Discourse requires a DNS hostname. IP addresses are unsupported and will not work."
-        echo
-        hostname="discourse.example.com"
-      fi
-    fi
-
-    check_IP_match $hostname
-
-    if [ ! -z "$developer_emails" ]
-    then
-      read -p "Email address for admin account(s)? [$developer_emails]: " new_value
-      if [ ! -z "$new_value" ]
-      then
-          developer_emails="$new_value"
-      fi
-    fi
-
-    if [ ! -z "$smtp_address" ]
-    then
-      read -p "SMTP server address? [$smtp_address]: " new_value
-      if [ ! -z "$new_value" ]
-      then
-        smtp_address="$new_value"
-      fi
-    fi
-
-    if [ ! -z "$smtp_port" ]
-    then
-      read -p "SMTP port? [$smtp_port]: " new_value
-      if [ ! -z "$new_value" ]
-      then
-        smtp_port="$new_value"
-      fi
-    fi
-
-    ##
-    ## automatically set correct user name based on common mail providers unless it's been set
-    ##
-    if [ "$smtp_user_name" == "user@example.com" ]
-    then
-      if [ "$smtp_address" == "smtp.sparkpostmail.com" ]
-      then
-      	smtp_user_name="SMTP_Injection"
-      fi
-      if [ "$smtp_address" == "smtp.sendgrid.net" ]
-      then
-  	    smtp_user_name="apikey"
-      fi
-      if [ "$smtp_address" == "smtp.mailgun.org" ]
-      then
-  	    smtp_user_name="postmaster@$hostname"
-      fi
-    fi
-
-    if [ ! -z "$smtp_user_name" ]
-    then
-      read -p "SMTP user name? [$smtp_user_name]: " new_value
-      if [ ! -z "$new_value" ]
-      then
-          smtp_user_name="$new_value"
-      fi
-    fi
-
-    read -p "SMTP password? [$smtp_password]: " new_value
-    if [ ! -z "$new_value" ]
-    then
-        smtp_password="$new_value"
-    fi
-
-    if [ ! -z $letsencrypt_account_email ]
-    then
-      read -p "Optional email address for Let's Encrypt warnings? ($letsencrypt_status) [$letsencrypt_account_email]: " new_value
-      if [ ! -z "$new_value" ]
-      then
-          letsencrypt_account_email="$new_value"
-          if [ "${new_value,,}" = "off" ]
-          then
-            letsencrypt_status="ENTER to skip"
-          else
-            letsencrypt_status="Enter 'OFF' to disable."
-          fi
-      fi
-    fi
 
     echo -e "\nDoes this look right?\n"
     echo "Hostname      : $hostname"
@@ -462,11 +336,6 @@ ask_user_for_config() {
     then
       echo "Let's Encrypt : $letsencrypt_account_email"
     fi
-
-
-    echo ""
-    read -p "ENTER to continue, 'n' to try again, Ctrl+C to exit: " config_ok
-  done
 
   sed -i -e "s/^  DISCOURSE_HOSTNAME:.*/  DISCOURSE_HOSTNAME: $hostname/w $changelog" $web_file
   if [ -s $changelog ]
